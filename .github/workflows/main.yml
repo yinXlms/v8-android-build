@@ -39,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/gclient
-          key: gclient-cache-v1
+          key: gclient-cache-v8-12.4.254.21
 
       - name: Cache Android NDK
         uses: actions/cache@v4
@@ -48,19 +48,17 @@ jobs:
           key: android-ndk-r26d
 
 
-      - name: Fetch V8 source
+      - name: Fetch V8 v12.4.254.21
         run: |
           mkdir v8
           cd v8
+      
           fetch v8
           cd v8
-          gclient sync --with_branch_heads --with_tags
-
-
-      - name: Force sync catapult
-        run: |
-          cd v8/v8
-          gclient sync --force --reset
+      
+          git checkout tags/12.4.254.21
+      
+          gclient sync --force --reset --with_branch_heads --with_tags
 
 
 
