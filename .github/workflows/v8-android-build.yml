@@ -1,0 +1,96 @@
+name: Build V8 for Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      v8_version:
+        description: 'V8 tag or branch to build'
+        required: true
+        default: '12.4.254.21'
+
+jobs:
+  build_v8_android:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target_cpu: arm
+            android_abi: armeabi-v7a
+          - os: ubuntu-latest
+            target_cpu: arm64
+            android_abi: arm64-v8a
+          - os: ubuntu-latest
+            target_cpu: x86
+            android_abi: x86
+          - os: ubuntu-latest
+            target_cpu: x64
+            android_abi: x86_64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Set up Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25b
+
+      - name: Install depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$PWD/depot_tools" >> $GITHUB_PATH
+
+      - name: Fetch V8
+        run: |
+          fetch v8
+          cd v8
+          git checkout ${{ github.event.inputs.v8_version }}
+          echo 'target_os = ["android"]' >> ../.gclient
+          gclient sync -D
+
+      - name: Create GN args
+        id: gn_args
+        run: |
+          mkdir -p v8/out.gn/android_${{ matrix.target_cpu }}
+          cat <<EOF > v8/out.gn/android_${{ matrix.target_cpu }}/args.gn
+          target_os = "android"
+          target_cpu = "${{ matrix.target_cpu }}"
+          is_debug = false
+          is_component_build = false
+          v8_monolithic = true
+          v8_use_external_startup_data = false
+          v8_enable_i18n_support = false
+          use_custom_libcxx = false
+          use_sysroot = false
+          android_ndk_root = "${{ steps.setup-ndk.outputs.ndk-path }}"
+          EOF
+
+      - name: Generate build files
+        run: |
+          cd v8
+          gn gen out.gn/android_${{ matrix.target_cpu }}
+
+      - name: Build V8 monolith
+        run: |
+          cd v8
+          ninja -C out.gn/android_${{ matrix.target_cpu }} v8_monolith
+
+      - name: Package artifacts
+        run: |
+          mkdir -p output/lib/${{ matrix.android_abi }}
+          mkdir -p output/include
+          cp v8/out.gn/android_${{ matrix.target_cpu }}/obj/libv8_monolith.a output/lib/${{ matrix.android_abi }}/
+          cp -r v8/include/* output/include/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: v8-android-${{ matrix.android_abi }}
+          path: output/
