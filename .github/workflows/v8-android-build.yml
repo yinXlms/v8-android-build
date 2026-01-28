@@ -13,7 +13,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # 仅保留 arm64-v8a 架构
           - os: ubuntu-latest
             target_cpu: arm64
             android_abi: arm64-v8a
@@ -44,49 +43,49 @@ jobs:
         uses: actions/cache@v4
         id: cache-depot-tools
         with:
-          path: ${{ runner.temp }}/depot_tools
+          path: ~/depot_tools
           key: ${{ runner.os }}-depot-tools
 
       - name: Install depot_tools
         if: steps.cache-depot-tools.outputs.cache-hit != 'true'
         run: |
           cd $HOME
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ${{ runner.temp }}/depot_tools
-          echo "${{ runner.temp }}/depot_tools" >> $GITHUB_PATH
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
 
-      - name: Cache V8 build output
-        uses: actions/cache@v4
-        id: cache-v8-build
-        with:
-          path: ${{ runner.temp }}/v8/out.gn/android_${{ matrix.target_cpu }}
-          key: ${{ runner.os }}-v8-build-${{ github.event.inputs.v8_version }}-${{ matrix.target_cpu }}-${{ hashFiles('.github/workflows/v8-android-build.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-v8-build-${{ github.event.inputs.v8_version }}-${{ matrix.target_cpu }}-
-            ${{ runner.os }}-v8-build-${{ github.event.inputs.v8_version }}-
+      - name: Add depot_tools to PATH
+        run: echo "$HOME/depot_tools" >> $GITHUB_PATH
 
       - name: Cache V8 source
         uses: actions/cache@v4
         id: cache-v8-source
         with:
-          path: ${{ runner.temp }}/v8
+          path: ~/v8
           key: ${{ runner.os }}-v8-source-${{ github.event.inputs.v8_version }}
-          restore-keys: |
-            ${{ runner.os }}-v8-source-${{ github.event.inputs.v8_version }}-
 
       - name: Fetch V8
         if: steps.cache-v8-source.outputs.cache-hit != 'true'
         run: |
           cd $HOME
-          fetch v8 ${{ runner.temp }}/v8
-          cd ${{ runner.temp }}/v8
+          fetch v8
+          cd v8
           git checkout ${{ github.event.inputs.v8_version }}
-          echo 'target_os = ["android"]' >> ${{ runner.temp }}/.gclient
+          echo 'target_os = ["android"]' >> ../.gclient
           gclient sync -D
+
+      - name: Cache V8 build output
+        uses: actions/cache@v4
+        id: cache-v8-build
+        with:
+          path: ~/v8/out.gn/android_${{ matrix.target_cpu }}
+          key: ${{ runner.os }}-v8-build-${{ github.event.inputs.v8_version }}-${{ matrix.target_cpu }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-v8-build-${{ github.event.inputs.v8_version }}-${{ matrix.target_cpu }}-
+            ${{ runner.os }}-v8-build-${{ github.event.inputs.v8_version }}-
 
       - name: Create GN args
         run: |
-          mkdir -p ${{ runner.temp }}/v8/out.gn/android_${{ matrix.target_cpu }}
-          cat <<'EOF' > ${{ runner.temp }}/v8/out.gn/android_${{ matrix.target_cpu }}/args.gn
+          mkdir -p $HOME/v8/out.gn/android_${{ matrix.target_cpu }}
+          cat <<'EOF' > $HOME/v8/out.gn/android_${{ matrix.target_cpu }}/args.gn
           target_os = "android"
           target_cpu = "${{ matrix.target_cpu }}"
           is_debug = false
@@ -97,27 +96,27 @@ jobs:
           use_custom_libcxx = false
           use_sysroot = false
           android_ndk_root = "${{ steps.setup-ndk.outputs.ndk-path }}"
-          # 修复 wasm-code-manager.h 中的编译错误
+          # 修复编译错误：禁用 WebAssembly 并在必要时忽略警告
           v8_enable_webassembly = false
           treat_warnings_as_errors = false
           EOF
 
       - name: Generate build files
         run: |
-          cd ${{ runner.temp }}/v8
+          cd $HOME/v8
           gn gen out.gn/android_${{ matrix.target_cpu }}
 
       - name: Build V8 monolith
         run: |
-          cd ${{ runner.temp }}/v8
+          cd $HOME/v8
           ninja -C out.gn/android_${{ matrix.target_cpu }} v8_monolith
 
       - name: Package artifacts
         run: |
           mkdir -p $GITHUB_WORKSPACE/output/lib/${{ matrix.android_abi }}
           mkdir -p $GITHUB_WORKSPACE/output/include
-          cp ${{ runner.temp }}/v8/out.gn/android_${{ matrix.target_cpu }}/obj/libv8_monolith.a $GITHUB_WORKSPACE/output/lib/${{ matrix.android_abi }}/
-          cp -r ${{ runner.temp }}/v8/include/* $GITHUB_WORKSPACE/output/include/
+          cp $HOME/v8/out.gn/android_${{ matrix.target_cpu }}/obj/libv8_monolith.a $GITHUB_WORKSPACE/output/lib/${{ matrix.android_abi }}/
+          cp -r $HOME/v8/include/* $GITHUB_WORKSPACE/output/include/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
