@@ -13,18 +13,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target_cpu: arm
-            android_abi: armeabi-v7a
+          # 仅保留 arm64-v8a 架构
           - os: ubuntu-latest
             target_cpu: arm64
             android_abi: arm64-v8a
-          - os: ubuntu-latest
-            target_cpu: x86
-            android_abi: x86
-          - os: ubuntu-latest
-            target_cpu: x64
-            android_abi: x86_64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
 
@@ -48,13 +40,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential git curl wget
 
+      - name: Cache depot_tools
+        uses: actions/cache@v4
+        id: cache-depot-tools
+        with:
+          path: ~/depot_tools
+          key: ${{ runner.os }}-depot-tools
+
       - name: Install depot_tools
+        if: steps.cache-depot-tools.outputs.cache-hit != 'true'
         run: |
           cd $HOME
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$HOME/depot_tools" >> $GITHUB_PATH
 
+      - name: Cache V8 source
+        uses: actions/cache@v4
+        id: cache-v8-source
+        with:
+          path: ~/v8
+          key: ${{ runner.os }}-v8-source-${{ github.event.inputs.v8_version }}-${{ hashFiles('.github/workflows/v8-android-build.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-v8-source-${{ github.event.inputs.v8_version }}-
+
       - name: Fetch V8
+        if: steps.cache-v8-source.outputs.cache-hit != 'true'
         run: |
           cd $HOME
           fetch v8
@@ -77,6 +87,8 @@ jobs:
           use_custom_libcxx = false
           use_sysroot = false
           android_ndk_root = "${{ steps.setup-ndk.outputs.ndk-path }}"
+          # 修复 wasm-code-manager.h 中的编译错误
+          treat_warnings_as_errors = false
           EOF
 
       - name: Generate build files
