@@ -53,7 +53,7 @@ jobs:
           mkdir v8
           cd v8
       
-          fetch v8
+          fetch v8 --checkout-chromium
           cd v8
       
           git checkout tags/12.4.254.21
