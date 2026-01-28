@@ -54,7 +54,15 @@ jobs:
           cd v8
           fetch v8
           cd v8
-          gclient sync
+          gclient sync --with_branch_heads --with_tags
+
+
+      - name: Force sync catapult
+        run: |
+          cd v8/v8
+          gclient sync --force --reset
+
+
 
       - name: Install Android NDK
         run: |
