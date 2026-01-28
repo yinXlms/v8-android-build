@@ -21,10 +21,32 @@ jobs:
             clang \
             lsb-release
 
+      - name: Cache depot_tools
+        uses: actions/cache@v4
+        with:
+          path: depot_tools
+          key: depot_tools-v1
+
+
       - name: Clone depot_tools
         run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          if [ ! -d depot_tools ]; then
+            git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          fi
           echo "$PWD/depot_tools" >> $GITHUB_PATH
+
+      - name: Cache gclient downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gclient
+          key: gclient-cache-v1
+
+      - name: Cache Android NDK
+        uses: actions/cache@v4
+        with:
+          path: android-ndk-r26d
+          key: android-ndk-r26d
+
 
       - name: Fetch V8 source
         run: |
@@ -36,10 +58,12 @@ jobs:
 
       - name: Install Android NDK
         run: |
-          sudo apt install -y unzip
-          wget https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
-          unzip -q android-ndk-r26d-linux.zip
+          if [ ! -d android-ndk-r26d ]; then
+            wget https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
+            unzip -q android-ndk-r26d-linux.zip
+          fi
           echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26d" >> $GITHUB_ENV
+
 
       - name: GN gen (android arm64)
         run: |
