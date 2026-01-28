@@ -13,19 +13,20 @@ jobs:
     strategy:
       matrix:
         include:
-          # - os: ubuntu-latest
-          #   target_cpu: arm
-          #   android_abi: armeabi-v7a
+          - os: ubuntu-latest
+            target_cpu: arm
+            android_abi: armeabi-v7a
           - os: ubuntu-latest
             target_cpu: arm64
             android_abi: arm64-v8a
-          # - os: ubuntu-latest
-          #   target_cpu: x86
-          #   android_abi: x86
-          # - os: ubuntu-latest
-          #   target_cpu: x64
-          #   android_abi: x86_64
+          - os: ubuntu-latest
+            target_cpu: x86
+            android_abi: x86
+          - os: ubuntu-latest
+            target_cpu: x64
+            android_abi: x86_64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
@@ -42,13 +43,20 @@ jobs:
         with:
           ndk-version: r25b
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git curl wget
+
       - name: Install depot_tools
         run: |
+          cd $HOME
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-          echo "$PWD/depot_tools" >> $GITHUB_PATH
+          echo "$HOME/depot_tools" >> $GITHUB_PATH
 
       - name: Fetch V8
         run: |
+          cd $HOME
           fetch v8
           cd v8
           git checkout ${{ github.event.inputs.v8_version }}
@@ -56,10 +64,9 @@ jobs:
           gclient sync -D
 
       - name: Create GN args
-        id: gn_args
         run: |
-          mkdir -p v8/out.gn/android_${{ matrix.target_cpu }}
-          cat <<EOF > v8/out.gn/android_${{ matrix.target_cpu }}/args.gn
+          mkdir -p $HOME/v8/out.gn/android_${{ matrix.target_cpu }}
+          cat <<'EOF' > $HOME/v8/out.gn/android_${{ matrix.target_cpu }}/args.gn
           target_os = "android"
           target_cpu = "${{ matrix.target_cpu }}"
           is_debug = false
@@ -74,23 +81,24 @@ jobs:
 
       - name: Generate build files
         run: |
-          cd v8
+          cd $HOME/v8
           gn gen out.gn/android_${{ matrix.target_cpu }}
 
       - name: Build V8 monolith
         run: |
-          cd v8
+          cd $HOME/v8
           ninja -C out.gn/android_${{ matrix.target_cpu }} v8_monolith
 
       - name: Package artifacts
         run: |
-          mkdir -p output/lib/${{ matrix.android_abi }}
-          mkdir -p output/include
-          cp v8/out.gn/android_${{ matrix.target_cpu }}/obj/libv8_monolith.a output/lib/${{ matrix.android_abi }}/
-          cp -r v8/include/* output/include/
+          mkdir -p $GITHUB_WORKSPACE/output/lib/${{ matrix.android_abi }}
+          mkdir -p $GITHUB_WORKSPACE/output/include
+          cp $HOME/v8/out.gn/android_${{ matrix.target_cpu }}/obj/libv8_monolith.a $GITHUB_WORKSPACE/output/lib/${{ matrix.android_abi }}/
+          cp -r $HOME/v8/include/* $GITHUB_WORKSPACE/output/include/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: v8-android-${{ matrix.android_abi }}
           path: output/
+          retention-days: 30
